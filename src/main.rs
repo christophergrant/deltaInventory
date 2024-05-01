@@ -20,9 +20,9 @@ struct TableStats {
     min_version: i64,
     max_version: i64,
     total_tombstone_count: i64,
-    total_tombstone_size: String,
+    total_tombstone_size: i64,
     total_unexpired_tombstone_count: i64,
-    total_unexpired_tombstone_size: String,
+    total_unexpired_tombstone_size: i64,
     error_count: i64,
 }
 
@@ -92,9 +92,9 @@ async fn load_and_display_snapshot(table_uri: &str) -> Result<TableStats, DeltaT
     min_version,
     max_version,
     total_tombstone_count,
-    total_tombstone_size: human_readable_bytes(total_tombstone_size), // Assign to field
+    total_tombstone_size: total_tombstone_size, 
     total_unexpired_tombstone_count,
-    total_unexpired_tombstone_size: human_readable_bytes(total_unexpired_tombstone_size), // Assign to field
+    total_unexpired_tombstone_size: total_unexpired_tombstone_size,
     error_count,
     })
 
