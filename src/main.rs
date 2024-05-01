@@ -2,11 +2,14 @@ use deltalake::{DeltaTableError, Path};
 use deltalake::aws;
 use async_std::task;
 use futures::stream::StreamExt;
-use colored::*;
 use env_logger::Builder;
 use serde::{Serialize, Deserialize};
 use std::env;
 use std::collections::HashMap;
+use log::{debug, error};
+use std::io::Write;
+
+
 
 mod s3;
 
@@ -37,12 +40,14 @@ fn human_readable_bytes(bytes: i64) -> String {
 
 async fn load_and_display_snapshot(table_uri: &str) -> Result<TableStats, DeltaTableError> {
 
+    let error_count = 0;
+    debug!("Loading storage options");
     let storage_options = s3::get_storage_options().await;
 
-
+    debug!("Registering AWS handlers");
     aws::register_handlers(None);
 
-    let error_count = 0;
+    debug!("Opening the Delta table at {}", table_uri);
     let table = deltalake::open_table_with_storage_options(table_uri, storage_options).await?;
     let snapshot = table.snapshot()?;
     let object_store = table.object_store();
@@ -50,6 +55,7 @@ async fn load_and_display_snapshot(table_uri: &str) -> Result<TableStats, DeltaT
     let mut min_version = i64::MAX;
     let mut max_version = i64::MIN;
     let mut list_stream = object_store.list(Some(&Path::from("_delta_log/")));
+    debug!("Started min/max listing...")
 
     while let Some(meta) = list_stream.next().await.transpose()? {
         if let Some(file_name) = meta.location.filename() {
@@ -63,18 +69,23 @@ async fn load_and_display_snapshot(table_uri: &str) -> Result<TableStats, DeltaT
     }
 
     if min_version == i64::MAX || max_version == i64::MIN {
+        error!("Table validation error: Not a table");
         return Err(DeltaTableError::NotATable(table_uri.to_string()));
     }
 
+    debug!("Calculating tombstone metrics...");
     let all_tombstones = snapshot.all_tombstones(object_store.clone()).await?;
     let (total_tombstone_size, total_tombstone_count) = all_tombstones
         .map(|t| t.size.unwrap_or(0))
         .fold((0, 0), |(acc_size, acc_count), size| (acc_size + size, acc_count + 1));
 
+    debug!("Calculating unexpired metrics...");
     let unexpired_tombstones = snapshot.unexpired_tombstones(object_store.clone()).await?;
     let (total_unexpired_tombstone_size, total_unexpired_tombstone_count) = unexpired_tombstones
         .map(|t| t.size.unwrap_or(0))
         .fold((0, 0), |(acc_size, acc_count), size| (acc_size + size, acc_count + 1));
+
+    debug!("Snapshot load and display complete");
 
     Ok(TableStats {
     table_uri: table_uri.to_string(),
@@ -91,6 +102,19 @@ async fn load_and_display_snapshot(table_uri: &str) -> Result<TableStats, DeltaT
 
 #[tokio::main]
 async fn main() {
+
+    let mut builder = Builder::from_default_env();
+    builder.format(|buf, record| {
+        writeln!(
+            buf,
+            "{} [{}] - {}",
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+            record.level(),
+            record.args()
+        )
+    });
+    builder.init();
+
     let args: Vec<String> = env::args().collect();
 
     // Check if the user has passed the required argument (the table path)
