@@ -55,7 +55,7 @@ async fn load_and_display_snapshot(table_uri: &str) -> Result<TableStats, DeltaT
     let mut min_version = i64::MAX;
     let mut max_version = i64::MIN;
     let mut list_stream = object_store.list(Some(&Path::from("_delta_log/")));
-    debug!("Started min/max listing...")
+    debug!("Started min/max listing...");
 
     while let Some(meta) = list_stream.next().await.transpose()? {
         if let Some(file_name) = meta.location.filename() {
